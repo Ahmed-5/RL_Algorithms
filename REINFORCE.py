@@ -29,15 +29,14 @@ class REINFORCE(nn.Module):
             self.layers.append(nn.Linear(x * y * 64, 512))
             self.layers.append(nn.GELU())
             self.layers.append(nn.Linear(512, n_actions))
-            self.layers.append(nn.Softmax(dim=-1))
         elif len(input_size) == 1:
             self.layers.append(nn.Linear(input_size[0], 128))
             self.layers.append(nn.GELU())
             self.layers.append(nn.Linear(128, 128))
             self.layers.append(nn.GELU())
             self.layers.append(nn.Linear(128, n_actions))
-            self.layers.append(nn.Softmax(dim=-1))
-
+        
+        self.layers.append(nn.Softmax(dim=-1))
         self.layers = nn.Sequential(*self.layers)
 
     def forward(self, x):

@@ -16,7 +16,7 @@ steps = 20000
 n_steps = 1
 lr = 1e-4
 batch_size = 256
-reinforce_batch = 32
+reinforce_batch = 1
 
 sw = SummaryWriter()
 
@@ -29,21 +29,21 @@ num_actions = env.action_space.n
 
 model = REINFORCE(input_shape, num_actions)
 
-actor = Actor(input_shape, num_actions)
-critic = Critic(input_shape)
+# actor = Actor(input_shape, num_actions)
+# critic = Critic(input_shape)
 
 memory = ReplayMemory(10000)
 # strategy = EpsilonGreedyStrategy(epsilon=1.0, decay=0.99, min_epsilon=0.01)
 strategy = ExponentialGreedyStrategy(epsilon=1.0, decay=0.99, min_epsilon=0.01)
 
-# optimizer = optim.AdamW(model.parameters(), lr=lr, amsgrad=True)
-optimizer = optim.AdamW(list(actor.parameters()) + list(critic.parameters()), lr=lr, amsgrad=True)
+optimizer = optim.AdamW(model.parameters(), lr=lr, amsgrad=True)
+# optimizer = optim.AdamW(list(actor.parameters()) + list(critic.parameters()), lr=lr, amsgrad=True)
 loss_function = nn.MSELoss()
 
 # train_dqn(
 #     model, steps, optimizer, loss_function, 
 #     device, env, memory, strategy, 
-#     batch_size=batch_size, gamma=0.9, n_steps=n_steps, tb_writer=sw
+#     batch_size=batch_size, gamma=0.9, n_steps=n_steps, adaptive_n_steps=True, tb_writer=sw
 # )
 
 # train_dqn_target(
