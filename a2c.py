@@ -100,6 +100,7 @@ def train_a2c(
         batch_size,
         gamma=0.99,
         n_steps=1,
+        adaptive_n_steps=False,
         start_step=0,
         save_path=None,
         save_every=10,
@@ -142,6 +143,11 @@ def train_a2c(
             episode_steps += 1
             count += 1
             replay_memory.push(state, action, reward, next_state, done)
+
+            if adaptive_n_steps:
+                n_steps = replay_memory.get_avg_episode_length()
+                n_steps = max(1, np.sqrt(n_steps)) - 1
+                n_steps = np.random.binomial(n_steps, 0.3) + 1
 
             batch = replay_memory.sample(batch_size, n_steps)
             if batch is not None:
