@@ -8,23 +8,28 @@ from REINFORCE import REINFORCE, train_reinforce
 from ppo import Actor, Critic, train_ppo
 from memory import ReplayMemory
 from strategy import EpsilonGreedyStrategy, ExponentialGreedyStrategy
-import gym
+import gymnasium as gym
+import ale_py
 from tensorboardX import SummaryWriter
+
+# gym.register_envs(ale_py)
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 steps = 20000
-n_steps = 3
+n_steps = 1
 lr = 1e-4
 batch_size = 256
 reinforce_batch = 1
 
 sw = SummaryWriter()
-
-env = gym.make('CartPole-v1')
+# ENV_NAME = 'CartPole-v1'
+ENV_NAME = 'ALE/AirRaid-v5'
+env = gym.make(ENV_NAME)
 input_shape = env.observation_space.shape
+unsqueeze = len(input_shape) != 1
 num_actions = env.action_space.n
 
-adaptive_n_steps=True
+adaptive_n_steps=False
 
 model = DQN(input_shape, num_actions)
 target_model = DQN(input_shape, num_actions)
@@ -50,8 +55,8 @@ loss_function = nn.MSELoss()
 
 train_dqn_target(
     model, target_model, steps, optimizer, loss_function, 
-    device, env, memory, strategy, 
-    batch_size=batch_size, gamma=0.9, n_steps=n_steps, adaptive_n_steps=adaptive_n_steps, tb_writer=sw
+    device, env, memory, strategy, batch_size=batch_size, unsqueeze=unsqueeze,
+    gamma=0.9, n_steps=n_steps, adaptive_n_steps=adaptive_n_steps, tb_writer=sw
 )
 
 # train_ddqn(
