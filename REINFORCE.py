@@ -74,6 +74,8 @@ def compute_cumulative_returns(rewards, gamma):
         future_return = rewards[t] + gamma * future_return
         returns[t] = future_return
         
+    # Normalize returns
+    returns = (returns - returns.mean()) / (returns.std() + 1e-8)
     return returns
 
 
@@ -111,98 +113,107 @@ def train_reinforce(
         tb_writer=None,
         scheduler=None
     ):
+    done = True
     total_loss = 0
     episode_count = 0
+    reward = 0
+    er = episode_reward = 0
+    es = episode_steps = 0
+    el = episode_loss = 0
     count = 0
-    
+
     model.train()
     model.to(device)
     
     with tqdm(range(start_step, steps + start_step)) as pbar:
         for step in pbar:
-            # Reset the environment at the beginning of each episode
-            state, _ = env.reset()
-            done = False
-            episode_reward = 0
-            episode_steps = 0
-            episode_loss = 0
+            if done:
+                state, _ = env.reset()
             
-            # Lists to store episode history
-            states_buffer = []
-            actions_buffer = []
-            rewards_buffer = []
+            state_t = torch.tensor(state).float().to(device)
+            with torch.no_grad():
+                policy = model(state_t)
             
-            # Collect a trajectory
-            while not done:
-                state_t = torch.tensor(state).float().to(device)
-                with torch.no_grad():
-                    policy = model(state_t)
-                
-                action = strategy.select_action(policy.detach().cpu().numpy(), sample=True, softmax=True)
-                next_state, reward, done, out_of_bounds, _ = env.step(action)
-                
-                if out_of_bounds:
-                    done = True
-                
-                # Store transition
-                states_buffer.append(state)
-                actions_buffer.append(action)
-                rewards_buffer.append(reward)
-                
-                episode_reward += reward
-                episode_steps += 1
-                
-                if tb_writer is not None:
-                    tb_writer.add_scalar('Global/reward', reward, step * 1000 + episode_steps)
-                
-                state = next_state
-                
-                if done or out_of_bounds:
-                    break
+            action = strategy.select_action(policy.detach().cpu().numpy(), sample=True, softmax=True)
+            next_state, reward, done, out_of_bounds, _ = env.step(action)
             
-            # End of episode processing
-            if len(rewards_buffer) > 0:
-                # Convert lists to tensors
-                states = torch.tensor(np.array(states_buffer), dtype=torch.float32).to(device)
-                actions = torch.tensor(np.array(actions_buffer), dtype=torch.int64).to(device)
-                rewards = torch.tensor(np.array(rewards_buffer), dtype=torch.float32).to(device)
+            if out_of_bounds:
+                done = True
                 
-                # Calculate returns
-                returns = compute_cumulative_returns(rewards, gamma)
+            if tb_writer is not None:
+                tb_writer.add_scalar('Global/reward', reward, step+1)
+
+            episode_reward += reward
+            episode_steps += 1
+            count += 1
+            
+            # Push the transition to replay memory
+            replay_memory.push(state, action, reward, next_state, done)
+
+            # Sample episodes from replay memory
+            batch = replay_memory.sample_episodes(batch_size)
+            
+            if batch is not None:
+                states, actions, rewards, next_states, dones = batch
+                batch_loss = 0
                 
-                # Get action probabilities
-                logits = model(states)
+                # Process each episode in the batch
+                for i in range(len(states)):
+                    episode_states = torch.tensor(states[i], dtype=torch.float32).to(device)
+                    episode_actions = torch.tensor(actions[i], dtype=torch.int64).to(device)
+                    episode_rewards = torch.tensor(rewards[i], dtype=torch.float32).to(device)
+                    
+                    # Calculate returns for this episode
+                    episode_returns = compute_cumulative_returns(episode_rewards, gamma)
+                    
+                    # Get action probabilities for this episode
+                    episode_logits = model(episode_states)
+                    
+                    # Calculate loss for this episode
+                    episode_loss = reinforce_loss(episode_logits, episode_actions, episode_returns)
+                    batch_loss += episode_loss
                 
-                # Calculate loss
-                loss = reinforce_loss(logits, actions, returns)
+                # Average loss across all episodes in the batch
+                batch_loss = batch_loss / len(states)
                 
                 # Update model
                 optimizer.zero_grad()
-                loss.backward()
+                batch_loss.backward()
                 nn.utils.clip_grad_value_(model.parameters(), 100)
                 optimizer.step()
                 
                 if scheduler is not None:
                     if tb_writer is not None:
-                        tb_writer.add_scalar("Global/lr", scheduler.get_last_lr()[-1], step)
+                        tb_writer.add_scalar("Global/lr", scheduler.get_last_lr()[-1], step+1)
                     scheduler.step(step)
                 
-                batch_loss = loss.item()
-                count += 1
-                total_loss += (batch_loss - total_loss) / count
-                episode_loss = batch_loss
+                loss_value = batch_loss.item()
+                total_loss += (loss_value - total_loss) / count
+                episode_loss += (loss_value - episode_loss) / episode_steps
                 
                 if tb_writer is not None:
-                    tb_writer.add_scalar("Global/loss", batch_loss, step)
-                    tb_writer.add_scalar('Episode/reward', episode_reward, episode_count)
-                    tb_writer.add_scalar('Episode/steps', episode_steps, episode_count)
-                    tb_writer.add_scalar('Episode/loss', episode_loss, episode_count)
-                
-                episode_count += 1
-                
-                pbar.set_description(f"step: {(step+1):3d}/{steps+start_step}, ep_reward: {episode_reward:.0f}, ep_loss: {episode_loss:.2f}, avg_loss: {(total_loss):.2e}")
+                    tb_writer.add_scalar("Global/loss", loss_value, step+1)
             
-            # Save the model
+            # Handle episode completion
+            if done:
+                if tb_writer is not None:
+                    tb_writer.add_scalar('Episode/reward', episode_reward, episode_count+1)
+                    tb_writer.add_scalar('Episode/steps', episode_steps, episode_count+1)
+                    tb_writer.add_scalar('Episode/loss', episode_loss, episode_count+1)
+
+                episode_count += 1
+                er = episode_reward
+                es = episode_steps
+                el = episode_loss
+                episode_reward = 0
+                episode_steps = 0
+                episode_loss = 0
+            else:
+                state = next_state
+            
+            pbar.set_description(f"step: {(step+1):3d}/{steps+start_step}, ep_reward: {er:.0f}, ep_loss: {el:.2f}, avg_loss: {total_loss:.2e}")
+
+            # Save model checkpoint
             if (step+1) % save_every == 0 and save_path is not None:
                 torch.save({
                     'model_state_dict': model.state_dict(),

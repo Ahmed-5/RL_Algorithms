@@ -19,11 +19,11 @@ steps = 20000
 n_steps = 1
 lr = 1e-4
 batch_size = 256
-reinforce_batch = 1
+reinforce_batch = 16
 
 sw = SummaryWriter()
-# ENV_NAME = 'CartPole-v1'
-ENV_NAME = 'ALE/AirRaid-v5'
+ENV_NAME = 'CartPole-v1'
+# ENV_NAME = 'ALE/AirRaid-v5'
 env = gym.make(ENV_NAME)
 input_shape = env.observation_space.shape
 unsqueeze = len(input_shape) != 1
@@ -31,10 +31,10 @@ num_actions = env.action_space.n
 
 adaptive_n_steps=False
 
-model = DQN(input_shape, num_actions)
-target_model = DQN(input_shape, num_actions)
+# model = DQN(input_shape, num_actions)
+# target_model = DQN(input_shape, num_actions)
 
-# model = REINFORCE(input_shape, num_actions)
+model = REINFORCE(input_shape, num_actions)
 
 # actor = Actor(input_shape, num_actions)
 # critic = Critic(input_shape)
@@ -53,11 +53,11 @@ loss_function = nn.MSELoss()
 #     batch_size=batch_size, gamma=0.9, n_steps=n_steps, adaptive_n_steps=adaptive_n_steps, tb_writer=sw
 # )
 
-train_dqn_target(
-    model, target_model, steps, optimizer, loss_function, 
-    device, env, memory, strategy, batch_size=batch_size, unsqueeze=unsqueeze,
-    gamma=0.9, n_steps=n_steps, adaptive_n_steps=adaptive_n_steps, tb_writer=sw
-)
+# train_dqn_target(
+#     model, target_model, steps, optimizer, loss_function, 
+#     device, env, memory, strategy, batch_size=batch_size, unsqueeze=unsqueeze,
+#     gamma=0.9, n_steps=n_steps, adaptive_n_steps=adaptive_n_steps, tb_writer=sw
+# )
 
 # train_ddqn(
 #     model, target_model, steps, optimizer, loss_function, 
@@ -65,11 +65,11 @@ train_dqn_target(
 #     batch_size=batch_size, gamma=0.9, n_steps=n_steps, tb_writer=sw
 # )
 
-# train_reinforce(
-#     model, steps, optimizer, 
-#     device, env, memory, strategy, 
-#     batch_size=reinforce_batch, gamma=0.9, tb_writer=sw
-# )
+train_reinforce(
+    model, steps, optimizer, 
+    device, env, memory, strategy, 
+    batch_size=reinforce_batch, gamma=0.9, tb_writer=sw
+)
 
 # train_a2c(
 #     actor, critic, steps, optimizer, loss_function, 
